@@ -5,6 +5,7 @@ import android.content.*;
 import android.graphics.*;
 import android.graphics.pdf.PdfDocument;
 import android.os.*;
+import android.view.accessibility.AccessibilityNodeInfo;
 import java.io.*;
 import java.lang.reflect.*;
 import java.util.*;
@@ -36,6 +37,18 @@ public class Probe extends Instrumentation {
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, f);
         }
         bitmap.recycle();
+    }
+    private boolean clickText(String text) {
+        AccessibilityNodeInfo root = getUiAutomation().getRootInActiveWindow();
+        if (root == null) return false;
+        for (AccessibilityNodeInfo found : root.findAccessibilityNodeInfosByText(text)) {
+            AccessibilityNodeInfo node = found;
+            while (node != null) {
+                if (node.isClickable() && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return true;
+                node = node.getParent();
+            }
+        }
+        return false;
     }
     private Set<Integer> roots(String dump) {
         Set<Integer> ids = new HashSet<>();
@@ -103,6 +116,13 @@ public class Probe extends Instrumentation {
                     catch (Throwable e) { failure.set(e); }
                 });
                 if (failure.get() != null) throw new RuntimeException(failure.get());
+                Thread.sleep(1500);
+                if (shell("dumpsys activity activities").contains("com.android.internal.app.ResolverActivity")) {
+                    shot("chooser-" + count);
+                    require(clickText("Pageno"), "Cannot select Pageno in Android resolver");
+                    Thread.sleep(500);
+                    require(clickText("Just once"), "Cannot confirm Pageno selection");
+                }
                 Thread.sleep(5000);
                 String recents = shell("dumpsys activity recents");
                 String activities = shell("dumpsys activity activities");
