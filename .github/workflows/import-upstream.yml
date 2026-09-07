@@ -1,0 +1,57 @@
+name: Import MJ PDF
+on:
+  push:
+    paths:
+      - .github/workflows/import-upstream.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: import-upstream
+  cancel-in-progress: false
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Import source once
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f UPSTREAM.md ]; then
+            echo "Source already imported; refusing to overwrite local work."
+            exit 0
+          fi
+          git clone --depth=1 https://gitlab.com/mudlej_android/mj_pdf_reader.git "$RUNNER_TEMP/mj-pdf"
+          upstream_sha=$(git -C "$RUNNER_TEMP/mj-pdf" rev-parse HEAD)
+          upstream_branch=$(git -C "$RUNNER_TEMP/mj-pdf" branch --show-current)
+          test -f "$RUNNER_TEMP/mj-pdf/LICENSE"
+          rsync -a --exclude=.git --exclude=.github "$RUNNER_TEMP/mj-pdf/" ./
+          {
+            echo '# Upstream provenance'
+            echo
+            echo 'Pageno is a fork of MJ PDF by Mudlej.'
+            echo 'Source: https://gitlab.com/mudlej_android/mj_pdf_reader'
+            echo "Imported commit: $upstream_sha"
+            echo "Imported branch: $upstream_branch"
+            echo 'The upstream LICENSE and copyright notices are retained.'
+            echo 'Snapshot import: upstream Git history remains available at the source URL.'
+          } > UPSTREAM.md
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .
+          git commit -m "Import MJ PDF source at $upstream_sha"
+          git push origin HEAD:main
+      - name: Show build configuration
+        run: |
+          find . -name AGENTS.md -print
+          find . -maxdepth 3 -type f \( -name '*gradle*' -o -name '*versions*' -o -name '.gitlab-ci.yml' \) -print
+          for file in build.gradle build.gradle.kts app/build.gradle app/build.gradle.kts gradle/libs.versions.toml gradle/wrapper/gradle-wrapper.properties .gitlab-ci.yml; do
+            if [ -f "$file" ]; then
+              echo "::group::$file"
+              cat "$file"
+              echo "::endgroup::"
+            fi
+          done
