@@ -46,7 +46,7 @@ def reader_tasks():
     blocks = re.split(r"\* Recent #\d+:", dump)[1:]
     ids = set()
     for block in blocks:
-        if "realActivity=" + READER not in block:
+        if "mActivityComponent=" + READER not in block:
             continue
         match = re.search(r"Task\{[^}\n]*#(\d+)", block)
         if match:
