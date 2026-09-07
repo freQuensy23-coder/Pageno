@@ -69,6 +69,32 @@ try:
         assert len(tasks) == count, f"Expected {count} document tasks, got {tasks}"
         observed.append(tasks)
     assert observed[0] < observed[1], "Reopening the same URI must preserve the previous task"
+    # Reproduce Telegram's request-code-500 launch with a private content provider.
+    caller = "io.github.frequensy23.intentcaller"
+    caller_component = caller + "/.CallerActivity"
+    print(adb("install", "-r", str(next(pathlib.Path("caller-apk").glob("*.apk")))))
+    for index, mode in enumerate(("result", "result", "plain"), 3):
+        adb("logcat", "-c")
+        print(adb("shell", "am", "start", "-W", "-n", caller_component, "--es", "mode", mode))
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            tasks = reader_tasks()
+            logs = adb("logcat", "-d")
+            if len(tasks) == index and "PDF_OPEN uid=" in logs:
+                break
+            time.sleep(1)
+        assert len(tasks) == index, f"{mode}: reader stayed inside caller task: {tasks}"
+        assert "PDF_OPEN uid=" in logs, "Forwarded content URI grant was lost"
+        time.sleep(3)
+        dump = adb("shell", "dumpsys", "activity", "activities")
+        (OUT / f"activities-{index}.txt").write_text(dump)
+        # Caller task must contain no reader activity; check each task block.
+        for block in re.split(r"(?m)^  \* Task", dump):
+            if "Hist #" in block and caller + "/.CallerActivity" in block:
+                assert READER not in block, "Reader still belongs to the caller task"
+        with (OUT / f"reader-{index}.png").open("wb") as image:
+            subprocess.run(["adb", "exec-out", "screencap", "-p"], stdout=image, check=True)
+        print(f"PASS: {mode}, separate tasks={tasks}, content URI opened")
     time.sleep(3)
     crashes = adb("logcat", "-d", "-b", "crash")
     (OUT / "crashes.txt").write_text(crashes)

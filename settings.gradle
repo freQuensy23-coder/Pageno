@@ -1,3 +1,5 @@
 include ':AndroidPdfViewer:android-pdf-viewer'
 include ':app'
 include ':PdfiumAndroid'
+include ':intent-caller'
+project(':intent-caller').projectDir = file('ci/intent-caller')

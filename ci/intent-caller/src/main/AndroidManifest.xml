@@ -1,0 +1,6 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:label="PDF caller test" android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        <activity android:name=".CallerActivity" android:exported="true" android:launchMode="singleTop"/>
+        <provider android:name=".PdfProvider" android:authorities="io.github.frequensy23.intentcaller.pdf" android:exported="false" android:grantUriPermissions="true"/>
+    </application>
+</manifest>

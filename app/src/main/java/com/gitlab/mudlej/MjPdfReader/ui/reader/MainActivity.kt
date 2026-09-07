@@ -151,6 +151,25 @@ class MainActivity : AppCompatActivity(), ReaderUi {
         reader = ReaderComposition(this, binding, vm, pref)
         documentLoader.applyTileRenderingPreferences()
 
+        // Telegram uses startActivityForResult: Android does not imply NEW_TASK
+        // from documentLaunchMode=always while a result receiver exists.
+        // Forward the original URI grants before finishing the caller's instance.
+        if (!isTaskRoot) {
+            val documentIntent = Intent(intent).apply {
+                setClass(this@MainActivity, MainActivity::class.java)
+                flags = (flags and (
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                        Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or
+                        Intent.FLAG_GRANT_PREFIX_URI_PERMISSION
+                    )) or Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_NEW_DOCUMENT or Intent.FLAG_ACTIVITY_MULTIPLE_TASK
+            }
+            startActivity(documentIntent)
+            finish()
+            return
+        }
+
         openInitialDocument(savedInstanceState)
         reader.wireViews()
         overrideOnBackButtonPressed()
@@ -330,7 +349,8 @@ class MainActivity : AppCompatActivity(), ReaderUi {
     fun displayFromUri(uri: Uri?, savePassword: Boolean = false) {
         documentLoader.displayFromUri(uri, savePassword)
         if (uri != null) {
-            closeOtherReaderWindows()
+            if (isFinishing) return
+        closeOtherReaderWindows()
         }
     }
 
