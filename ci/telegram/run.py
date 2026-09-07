@@ -11,12 +11,15 @@ def adb(*args, check=True):
 
 print(adb('install', '-r', root/'telegram.apk'))
 print(adb('install', '-r', root/'probe.apk'))
+# Keep the test deterministic: Pageno is the only PDF handler, as with a saved default.
+print(adb('shell', 'pm', 'disable-user', '--user', '0', 'com.google.android.apps.docs', check=False))
 for mode, folder in [('baseline', 'baseline-apk'), ('fixed', 'fixed-apk')]:
     adb('shell', 'am', 'force-stop', package)
     adb('uninstall', 'io.github.frequensy23.pageno', check=False)
     apk = next(pathlib.Path(folder).glob('*universal*.apk'))
     print(adb('install', '-r', apk))
     adb('shell', 'appops', 'set', 'io.github.frequensy23.pageno', 'MANAGE_EXTERNAL_STORAGE', 'allow')
+    (out/f'{mode}-handlers.txt').write_text(adb('shell', 'cmd', 'package', 'query-activities', '--brief', '-a', 'android.intent.action.VIEW', '-t', 'application/pdf', '-d', 'content://org.telegram.messenger.web.provider/cache/test.pdf', check=False))
     adb('logcat', '-c')
     try:
         result = adb('shell', 'am', 'instrument', '-w', '-e', 'mode', mode, 'io.github.frequensy23.telegramprobe/.Probe')
