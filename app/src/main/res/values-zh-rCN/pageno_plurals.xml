@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <plurals name="hide_delay_seconds">
+        <item quantity="other">%d 秒</item>
+    </plurals>
+</resources>
