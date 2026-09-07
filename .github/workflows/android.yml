@@ -34,12 +34,17 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y cmake ninja-build python3-requests
+      - name: Calculate native source cache key
+        id: native-key
+        run: |
+          source_hash=$(git ls-tree -r HEAD -- build_dependencies.py build_dependencies PdfiumAndroid/src/main/jni | sha256sum | cut -d ' ' -f 1)
+          echo "key=native-$RUNNER_OS-$NDK_VERSION-$source_hash" >> "$GITHUB_OUTPUT"
       - name: Cache native libraries
         id: native-cache
         uses: actions/cache@v4
         with:
           path: PdfiumAndroid/src/main/libs
-          key: native-${{ runner.os }}-${{ env.NDK_VERSION }}-${{ hashFiles('build_dependencies.py', 'build_dependencies/**', 'PdfiumAndroid/src/main/jni/**') }}
+          key: ${{ steps.native-key.outputs.key }}
       - name: Build native libraries for all four ABIs
         if: steps.native-cache.outputs.cache-hit != 'true'
         run: |
