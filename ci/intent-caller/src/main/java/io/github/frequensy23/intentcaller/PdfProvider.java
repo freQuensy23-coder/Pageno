@@ -18,7 +18,8 @@ public class PdfProvider extends ContentProvider {
     private File file;
     @Override public boolean onCreate() {
         file = new File(getContext().getCacheDir(), "caller-test.pdf");
-        try (PdfDocument pdf = new PdfDocument()) {
+        PdfDocument pdf = new PdfDocument();
+        try {
             PdfDocument.Page page = pdf.startPage(new PdfDocument.PageInfo.Builder(300, 200, 1).create());
             Paint paint = new Paint();
             paint.setTextSize(20);
@@ -27,6 +28,7 @@ public class PdfProvider extends ContentProvider {
             try (FileOutputStream out = new FileOutputStream(file)) { pdf.writeTo(out); }
             return true;
         } catch (Exception e) { throw new IllegalStateException(e); }
+        finally { pdf.close(); }
     }
     @Override public ParcelFileDescriptor openFile(Uri uri, String mode) throws FileNotFoundException {
         if (!"r".equals(mode)) throw new FileNotFoundException("Read only");
