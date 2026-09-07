@@ -10,7 +10,7 @@ CI uses the upstream checksum-pinned prebuilt PDFium and builds FreeType, libpng
 
 The workflow runs Python download-tool tests, Gradle testDebugUnitTest and lintDebug, and builds debug and optimized unsigned release APKs. Test and lint reports are retained for 14 days; release APKs for 30 days.
 
-Download the Pageno-debug artifact from a successful Actions run for an installable debug build. Debug signing keys are runner-generated, so debug builds from different runs may require uninstalling the prior build. The initial fork still uses the original MJ PDF application ID.
+Download the Pageno-debug artifact from a successful Actions run for an installable debug build. Debug signing keys are runner-generated, so debug builds from different runs may require uninstalling the prior build. Pageno uses application ID `io.github.frequensy23.pageno`, so it can coexist with MJ PDF.
 
 ## Release delivery
 
@@ -29,3 +29,7 @@ bash ./gradlew assembleDebug assembleRelease testDebugUnitTest lintDebug
 ```
 
 The upstream README's statement that native binaries are included does not apply to this imported source snapshot. Build the native dependencies first.
+
+## Document task regression
+
+The task-smoke job installs the debug APK on Android 16 (API 36), opens the same PDF twice through ACTION_VIEW, and checks for two distinct document tasks and no application crash. Logs and a Recents screenshot are uploaded. This shell-driven smoke test does not exercise Telegram's content provider or Samsung-specific behavior; also verify opening a PDF from Telegram on the target phone.

@@ -48,7 +48,7 @@ android {
     def fdroidAbi = project.findProperty("fdroidAbi")
 
     defaultConfig {
-        applicationId "com.gitlab.mudlej.MjPdfReader"
+        applicationId "io.github.frequensy23.pageno"
         minSdkVersion 23
         compileSdkVersion 36
         targetSdkVersion 36

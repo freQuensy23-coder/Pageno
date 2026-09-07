@@ -85,7 +85,9 @@
         <activity
             android:name=".ui.reader.MainActivity"
             android:configChanges="keyboardHidden|orientation|screenSize"
-            android:documentLaunchMode="intoExisting"
+            android:documentLaunchMode="always"
+            android:launchMode="standard"
+            android:excludeFromRecents="false"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

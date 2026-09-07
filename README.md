@@ -4,7 +4,7 @@
 
 Pageno is a GPL-3.0-or-later fork of MJ PDF by Mudlej. See [UPSTREAM.md](UPSTREAM.md) for the exact imported revision and [CI.md](CI.md) for builds and releases.
 
-This initial import retains the upstream application name and Android application ID. The store links and screenshots below refer to the original MJ PDF.
+Pageno uses its own application ID (`io.github.frequensy23.pageno`) and icon, and opens each PDF in a separate document task. Reopening the same PDF creates another task. The store links and screenshots below refer to the original MJ PDF.
 
 ---
 
