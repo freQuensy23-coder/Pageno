@@ -67,8 +67,8 @@ public class Probe extends Instrumentation {
                 public void onActivityDestroyed(Activity a) {}
             }));
             Intent launch = new Intent(Intent.ACTION_MAIN).setClassName(target.getPackageName(), "org.telegram.ui.LaunchActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            startActivitySync(launch);
-            for (int i = 0; i < 100 && resumed.get() == null; i++) Thread.sleep(100);
+            runOnMainSync(() -> target.startActivity(launch));
+            for (int i = 0; i < 300 && resumed.get() == null; i++) Thread.sleep(100);
             Activity telegram = resumed.get();
             require(telegram != null, "Telegram Activity did not resume");
             int telegramTask = telegram.getTaskId();
