@@ -1,3 +1,13 @@
+# Pageno
+
+[![Android CI](https://github.com/freQuensy23-coder/Pageno/actions/workflows/android.yml/badge.svg)](https://github.com/freQuensy23-coder/Pageno/actions/workflows/android.yml)
+
+Pageno is a GPL-3.0-or-later fork of MJ PDF by Mudlej. See [UPSTREAM.md](UPSTREAM.md) for the exact imported revision and [CI.md](CI.md) for builds and releases.
+
+This initial import retains the upstream application name and Android application ID. The store links and screenshots below refer to the original MJ PDF.
+
+---
+
 <div align="center">
 
 <img src="assets/logo/logo.webp" width="110" alt="MJ PDF logo"/>
