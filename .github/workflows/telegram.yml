@@ -1,0 +1,55 @@
+name: Telegram integration
+on:
+  push:
+    branches: [main]
+    paths: ['ci/telegram/**', '.github/workflows/telegram.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  telegram:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - uses: actions/download-artifact@v4
+        with:
+          name: Pageno-debug
+          run-id: 34105575228
+          github-token: ${{ github.token }}
+          path: baseline-apk
+      - uses: actions/download-artifact@v4
+        with:
+          name: Pageno-debug
+          run-id: 34107686607
+          github-token: ${{ github.token }}
+          path: fixed-apk
+      - name: Prepare official Telegram and instrumentation
+        run: python3 ci/telegram/prepare.py
+      - run: sudo chmod 666 /dev/kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: python3 ci/telegram/run.py
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: telegram-evidence
+          path: |
+            telegram-evidence/
+            telegram-work/*.txt
+            telegram-work/*.json
+          retention-days: 14
