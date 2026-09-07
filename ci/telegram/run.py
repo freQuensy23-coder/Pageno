@@ -5,7 +5,7 @@ out = pathlib.Path('telegram-evidence')
 out.mkdir(exist_ok=True)
 package = (root/'package.txt').read_text().strip()
 def adb(*args, check=True):
-    r = subprocess.run(['adb', *map(str,args)], text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    r = subprocess.run(['adb', *map(str,args)], text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=180)
     if check and r.returncode: raise RuntimeError(r.stdout)
     return r.stdout
 
@@ -23,6 +23,9 @@ for mode, folder in [('baseline', 'baseline-apk'), ('fixed', 'fixed-apk')]:
         print(result)
         (out/f'{mode}-instrumentation.txt').write_text(result)
     finally:
+        (out/f'{mode}-activities-final.txt').write_text(adb('shell', 'dumpsys', 'activity', 'activities', check=False))
+        with (out/f'{mode}-final.png').open('wb') as image:
+            subprocess.run(['adb', 'exec-out', 'screencap', '-p'], stdout=image, timeout=20)
         adb('pull', f'/sdcard/Android/data/{package}/files/pageno-probe-{mode}', out, check=False)
         (out/f'{mode}-logcat.txt').write_text(adb('logcat', '-d', check=False))
     assert f'PASS {mode}:' in result, result
