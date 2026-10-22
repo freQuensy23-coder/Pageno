@@ -74,6 +74,7 @@ public final class TelegramPdfE2E extends Instrumentation {
     private String telegramPackage;
     private final AtomicReference<Activity> telegramResumed = new AtomicReference<>();
     private final List<String> notes = new ArrayList<>();
+    private final List<String> disabledHandlers = new ArrayList<>();
     private int step;
 
     @Override
@@ -102,6 +103,11 @@ public final class TelegramPdfE2E extends Instrumentation {
                 status.putString("stream", "PASS " + scenario + "\n" + joinNotes());
                 sendStatus(0, status);
                 summary.append("E2E_RESULT ").append(scenario).append(" PASS\n");
+            } catch (Skip skip) {
+                status.putString("stack", skip.getMessage());
+                status.putString("stream", "SKIP " + scenario + ": " + skip.getMessage() + "\n");
+                sendStatus(-4, status);
+                summary.append("E2E_RESULT ").append(scenario).append(" SKIP ").append(skip.getMessage()).append('\n');
             } catch (Throwable error) {
                 failures++;
                 String stack = stackTrace(error);
@@ -112,6 +118,8 @@ public final class TelegramPdfE2E extends Instrumentation {
                 sendStatus(-2, status);
                 summary.append("E2E_RESULT ").append(scenario).append(" FAIL ")
                     .append(String.valueOf(error.getMessage()).replace('\n', ' ')).append('\n');
+            } finally {
+                restoreHandlers();
             }
         }
         Log.i(TAG, summary.toString());
@@ -123,11 +131,52 @@ public final class TelegramPdfE2E extends Instrumentation {
     private void runScenario(String scenario) throws Exception {
         setUp(scenario);
         switch (scenario) {
-            case "open_once": openOnce(null); break;
-            case "chooser_just_once": openOnce("Just once"); break;
-            case "open_twice": openTwice(); break;
+            case "open_once": onlyPagenoHandlesPdf(); openOnce(null); break;
+            case "open_twice": onlyPagenoHandlesPdf(); openTwice(); break;
+            case "chooser_just_once": chooserWithPageno(); openOnce("Just once"); break;
             default: throw new IllegalArgumentException("Unknown scenario " + scenario);
         }
+    }
+
+    // PDF handler setup, done through the shell so the test also runs where no host script does.
+
+    private List<String> pdfHandlers() throws Exception {
+        String query = shell("cmd package query-activities --brief -a android.intent.action.VIEW -t application/pdf -d content://"
+            + telegramPackage + ".provider/media/test.pdf");
+        List<String> packages = new ArrayList<>();
+        for (String line : query.split("\n")) {
+            line = line.trim();
+            int slash = line.indexOf('/');
+            if (slash > 0 && !packages.contains(line.substring(0, slash))) packages.add(line.substring(0, slash));
+        }
+        return packages;
+    }
+
+    /** Pageno as the only PDF viewer, as after choosing "Always" for it. */
+    private void onlyPagenoHandlesPdf() throws Exception {
+        for (String pkg : pdfHandlers()) {
+            if (pkg.equals(PAGENO)) continue;
+            note("disable other PDF viewer " + pkg + ": " + shell("pm disable-user --user 0 " + pkg).trim());
+            disabledHandlers.add(pkg);
+        }
+        List<String> handlers = pdfHandlers();
+        require(handlers.size() == 1 && handlers.get(0).equals(PAGENO),
+            "PRECONDITION: Pageno must be the only PDF viewer, found " + handlers);
+    }
+
+    /** Several PDF viewers, so Android asks which one to use. */
+    private void chooserWithPageno() throws Exception {
+        List<String> handlers = pdfHandlers();
+        note("PDF viewers: " + handlers);
+        require(handlers.contains(PAGENO), "PRECONDITION: Pageno does not handle PDFs: " + handlers);
+        if (handlers.size() < 2) throw new Skip("no other PDF viewer is installed, so Android shows no chooser");
+    }
+
+    private void restoreHandlers() {
+        for (String pkg : disabledHandlers) {
+            try { shell("pm enable --user 0 " + pkg); } catch (Throwable ignored) { }
+        }
+        disabledHandlers.clear();
     }
 
     // A single document opened from Telegram, then Telegram <-> PDF switching.
@@ -518,6 +567,10 @@ public final class TelegramPdfE2E extends Instrumentation {
         StringWriter text = new StringWriter();
         error.printStackTrace(new PrintWriter(text));
         return text.toString();
+    }
+
+    private static final class Skip extends RuntimeException {
+        Skip(String message) { super(message); }
     }
 
     private static final class Opened {

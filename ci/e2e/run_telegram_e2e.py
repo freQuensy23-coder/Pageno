@@ -16,12 +16,8 @@ import sys
 
 PAGENO = "io.github.frequensy23.pageno"
 PROBE = "io.github.frequensy23.pageno.e2e/.TelegramPdfE2E"
-# Scenario -> required PDF handler setup.
-SCENARIOS = {
-    "chooser_just_once": "chooser",
-    "open_once": "sole",
-    "open_twice": "sole",
-}
+# The instrumentation sets up the PDF viewers each scenario needs.
+SCENARIOS = ["chooser_just_once", "open_once", "open_twice"]
 BUG_MARKERS = (
     "READER_IN_TELEGRAM_TASK", "PAGENO_ACTIVITY_IN_TELEGRAM_TASK", "READER_NOT_TASK_ROOT",
     "TELEGRAM_NOT_SHOWN_FROM", "PDF_CLOSED_BY_RETURN_TO_TELEGRAM",
@@ -48,28 +44,6 @@ def adb(*command, check=True, timeout=180):
     return result.stdout
 
 
-def pdf_handlers():
-    query = adb("shell", "cmd", "package", "query-activities", "--brief", "-a", "android.intent.action.VIEW",
-                "-t", "application/pdf", "-d", f"content://{telegram}.provider/media/test.pdf")
-    return sorted({line.strip().split("/")[0] for line in query.splitlines() if "/" in line})
-
-
-def configure_handlers(mode):
-    """'sole': Pageno is the only PDF viewer. 'chooser': at least one other viewer is enabled."""
-    for package in disabled:
-        adb("shell", "pm", "enable", "--user", "0", package, check=False)
-    disabled.clear()
-    handlers = pdf_handlers()
-    if mode == "sole":
-        for package in handlers:
-            if package != PAGENO:
-                adb("shell", "pm", "disable-user", "--user", "0", package)
-                disabled.append(package)
-        handlers = pdf_handlers()
-        assert handlers == [PAGENO], f"Pageno is not the only PDF handler: {handlers}"
-    return handlers
-
-
 subprocess.run(["adb", "wait-for-device"], check=True)
 print(adb("shell", "getprop", "ro.build.fingerprint").strip())
 print(adb("install", "-r", "-g", args.telegram_work / "telegram.apk"))
@@ -79,38 +53,28 @@ print(adb("install", "-r", "-g", args.apk))
 adb("shell", "appops", "set", PAGENO, "MANAGE_EXTERNAL_STORAGE", "allow", check=False)
 adb("shell", "settings", "put", "global", "package_verifier_user_consent", "-1", check=False)
 
-disabled = []
 results = {}
-try:
-    for scenario in args.scenarios.split(","):
-        mode = SCENARIOS[scenario]
-        handlers = configure_handlers(mode)
-        (out / f"{scenario}-handlers.txt").write_text("\n".join(handlers) + "\n")
-        if mode == "chooser" and len([h for h in handlers if h != PAGENO]) == 0:
-            results[scenario] = ("SKIP", "no other PDF viewer installed, so Android shows no chooser")
-            continue
-        for package in (telegram, PAGENO):
-            adb("shell", "am", "force-stop", package)
-        adb("shell", "rm", "-rf", f"/sdcard/Android/data/{telegram}/files/pageno-e2e/{scenario}", check=False)
-        adb("logcat", "-c", check=False)
-        try:
-            output = adb("shell", "am", "instrument", "-w", "-r", "-e", "scenario", scenario, PROBE, timeout=420)
-        except subprocess.TimeoutExpired as error:
-            output = f"TIMEOUT {error}"
-        (out / f"{scenario}-instrumentation.txt").write_text(output)
-        adb("pull", f"/sdcard/Android/data/{telegram}/files/pageno-e2e/{scenario}", out, check=False)
-        (out / f"{scenario}-logcat.txt").write_text(adb("logcat", "-d", check=False))
-        (out / f"{scenario}-crash.txt").write_text(adb("logcat", "-d", "-b", "crash", check=False))
-        match = re.search(rf"E2E_RESULT {scenario} (PASS|FAIL)(.*)", output)
-        if match:
-            failure = out / scenario / "failure.txt"
-            detail = failure.read_text() if failure.exists() else match.group(2).strip()
-            results[scenario] = (match.group(1), detail)
-        else:
-            results[scenario] = ("FAIL", "instrumentation did not report a result:\n" + output[-4000:])
-finally:
-    for package in disabled:
-        adb("shell", "pm", "enable", "--user", "0", package, check=False)
+for scenario in args.scenarios.split(","):
+    assert scenario in SCENARIOS, scenario
+    for package in (telegram, PAGENO):
+        adb("shell", "am", "force-stop", package)
+    adb("shell", "rm", "-rf", f"/sdcard/Android/data/{telegram}/files/pageno-e2e/{scenario}", check=False)
+    adb("logcat", "-c", check=False)
+    try:
+        output = adb("shell", "am", "instrument", "-w", "-r", "-e", "scenario", scenario, PROBE, timeout=420)
+    except subprocess.TimeoutExpired as error:
+        output = f"TIMEOUT {error}"
+    (out / f"{scenario}-instrumentation.txt").write_text(output)
+    adb("pull", f"/sdcard/Android/data/{telegram}/files/pageno-e2e/{scenario}", out, check=False)
+    (out / f"{scenario}-logcat.txt").write_text(adb("logcat", "-d", check=False))
+    (out / f"{scenario}-crash.txt").write_text(adb("logcat", "-d", "-b", "crash", check=False))
+    match = re.search(rf"E2E_RESULT {scenario} (PASS|FAIL|SKIP)(.*)", output)
+    if match:
+        failure = out / scenario / "failure.txt"
+        detail = failure.read_text() if match.group(1) == "FAIL" and failure.exists() else match.group(2).strip()
+        results[scenario] = (match.group(1), detail)
+    else:
+        results[scenario] = ("FAIL", "instrumentation did not report a result:\n" + output[-4000:])
 
 print(f"\n===== Telegram E2E: {args.label} ({args.apk.name}), expect {args.expect} =====")
 for scenario, (verdict, detail) in results.items():

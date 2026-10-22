@@ -36,7 +36,11 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: gradle
-      - uses: android-actions/setup-android@v3
+      - name: Use the runner's Android SDK
+        run: |
+          tools=$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin | sort -V | tail -1)
+          echo "$tools" >> "$GITHUB_PATH"
+          yes | "$tools/sdkmanager" --licenses > /dev/null || true
       - name: Install Android SDK and NDK
         run: |
           sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;$NDK_VERSION"
@@ -83,7 +87,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
+      - name: Use the runner's Android SDK
+        run: |
+          tools=$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin | sort -V | tail -1)
+          echo "$tools" >> "$GITHUB_PATH"
+          yes | "$tools/sdkmanager" --licenses > /dev/null || true
       - run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
       - name: Download official Telegram and build the instrumentation
         run: python3 ci/e2e/prepare_telegram.py telegram-work
