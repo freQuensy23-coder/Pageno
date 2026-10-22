@@ -1,0 +1,139 @@
+name: Telegram E2E
+# Opens a PDF from the official Telegram app on an Android 16 emulator and checks that Pageno
+# shows it in its own task. The same test also runs against a known-bad build and must catch it.
+on:
+  push:
+    branches: [main, 'fix/**']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: telegram-e2e-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  NDK_VERSION: '30.0.14904198'
+jobs:
+  apk:
+    strategy:
+      matrix:
+        include:
+          - label: head
+            ref: ''
+          # Last commit before the singleInstancePerTask fix. Telegram PDFs open inside
+          # Telegram's task in this build. Kept as a negative control.
+          - label: known-bad
+            ref: d84c868c383f96bc0adfd7e15c1f21a709b3d4a1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          ref: ${{ matrix.ref }}
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK and NDK
+        run: |
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;$NDK_VERSION"
+          echo "ANDROID_NDK=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y cmake ninja-build python3-requests
+      - name: Calculate native source cache key
+        id: native-key
+        run: |
+          source_hash=$(git ls-tree -r HEAD -- build_dependencies.py build_dependencies PdfiumAndroid/src/main/jni | sha256sum | cut -d ' ' -f 1)
+          echo "key=native-$RUNNER_OS-$NDK_VERSION-$source_hash" >> "$GITHUB_OUTPUT"
+      - name: Cache native libraries
+        id: native-cache
+        uses: actions/cache@v4
+        with:
+          path: PdfiumAndroid/src/main/libs
+          key: ${{ steps.native-key.outputs.key }}
+      - name: Build native libraries
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p PdfiumAndroid/src/main/jni/lib/{arm64-v8a,armeabi-v7a,x86,x86_64}
+          python3 build_dependencies.py --pdfium prebuilt
+      - name: Build debug APK
+        run: bash ./gradlew --no-daemon --stacktrace --max-workers=2 -Dorg.gradle.jvmargs=-Xmx4g :app:assembleDebug
+      - name: Record build source
+        run: git log -1 --format='%H %s' > app/build/outputs/apk/debug/SOURCE.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pageno-${{ matrix.label }}
+          path: app/build/outputs/apk/debug/
+          if-no-files-found: error
+          retention-days: 14
+
+  telegram:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - name: Download official Telegram and build the instrumentation
+        run: python3 ci/e2e/prepare_telegram.py telegram-work
+      - uses: actions/upload-artifact@v4
+        with:
+          name: telegram-work
+          path: |
+            telegram-work/*.apk
+            telegram-work/*.txt
+            telegram-work/*.json
+          retention-days: 14
+
+  e2e:
+    needs: [apk, telegram]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - device: phone
+            profile: pixel_6
+          - device: foldable
+            profile: pixel_fold
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pageno-*
+      - uses: actions/download-artifact@v4
+        with:
+          name: telegram-work
+          path: telegram-work
+      - name: Enable emulator acceleration
+        run: sudo chmod 666 /dev/kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          arch: x86_64
+          target: google_apis
+          profile: ${{ matrix.profile }}
+          ram-size: 4096M
+          disable-animations: true
+          script: bash ci/e2e/emulator_suite.sh telegram-e2e-results/${{ matrix.device }}
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: telegram-e2e-${{ matrix.device }}
+          path: telegram-e2e-results/
+          retention-days: 30
