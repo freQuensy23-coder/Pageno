@@ -344,6 +344,12 @@ public final class TelegramPdfE2E extends Instrumentation {
             problems.add("READER_IN_TELEGRAM_TASK: the PDF is shown inside Telegram's task #" + telegramTask
                 + " instead of a separate Pageno window");
         }
+        for (Rec created : reader.created) {
+            if (created.task == telegramTask) {
+                problems.add("READER_STARTED_IN_TELEGRAM_TASK: Android created reader #" + created.id
+                    + " inside Telegram's task #" + telegramTask + " (wm_create_activity)");
+            }
+        }
         List<Rec> inTelegram = state.inTask(telegramTask, PAGENO + "/");
         if (!inTelegram.isEmpty()) {
             problems.add("PAGENO_ACTIVITY_IN_TELEGRAM_TASK: " + inTelegram);
