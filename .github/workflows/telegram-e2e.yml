@@ -23,7 +23,7 @@ jobs:
           # Last commit before the singleInstancePerTask fix. Telegram PDFs open inside
           # Telegram's task in this build. Kept as a negative control.
           - label: known-bad
-            ref: d84c868c383f96bc0adfd7e15c1f21a709b3d4a1
+            ref: c3057265c12f9c2f538a0c4bcdbabb73edd06d07
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -112,8 +112,8 @@ jobs:
         include:
           - device: phone
             profile: pixel_6
-          - device: foldable
-            profile: pixel_fold
+          - device: tablet
+            profile: pixel_c
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:

@@ -57,6 +57,7 @@ public final class TelegramPdfE2E extends Instrumentation {
     static final String PAGENO = "io.github.frequensy23.pageno";
     static final String READER = PAGENO + "/com.gitlab.mudlej.MjPdfReader.ui.reader.MainActivity";
     private static final long OPEN_TIMEOUT_MS = 30_000;
+    private static final long SETTLE_TIMEOUT_MS = 12_000;
 
     private static final Pattern RECORD = Pattern.compile(
         "ActivityRecord\\{(\\S+) u\\d+ (\\S+) t(-?\\d+)( f)?\\}");
@@ -120,6 +121,7 @@ public final class TelegramPdfE2E extends Instrumentation {
                     .append(String.valueOf(error.getMessage()).replace('\n', ' ')).append('\n');
             } finally {
                 restoreHandlers();
+                removeTelegramTasks();
             }
         }
         Log.i(TAG, summary.toString());
@@ -241,6 +243,7 @@ public final class TelegramPdfE2E extends Instrumentation {
             public void onActivitySaveInstanceState(Activity a, Bundle b) { }
             public void onActivityDestroyed(Activity a) { }
         }));
+        removeTelegramTasks();
         // Start Telegram the way the launcher does, so its task has the usual base intent.
         shell("am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x10200000 -n "
             + launcherComponent().flattenToShortString());
@@ -293,9 +296,8 @@ public final class TelegramPdfE2E extends Instrumentation {
                 }
                 if (!chooserHandled) {
                     evidence("chooser");
-                    require(clickText("Pageno"), "Cannot select Pageno in the app chooser");
-                    Thread.sleep(800);
-                    clickText(chooserButton);
+                    require(clickTextWithin("Pageno", 10_000), "Cannot select Pageno in the app chooser");
+                    require(clickTextWithin(chooserButton, 10_000), "Cannot press \"" + chooserButton + "\" in the app chooser");
                     chooserHandled = true;
                 }
             }
@@ -307,16 +309,23 @@ public final class TelegramPdfE2E extends Instrumentation {
             Thread.sleep(400);
         }
         if (chooserButton != null) require(chooserHandled, "PRECONDITION: the app chooser never appeared");
-        Opened opened = new Opened(state.resumed.id, state.resumed.task, name);
-        // Let the reader settle (document load, possible self-relaunch) before judging placement.
-        Thread.sleep(2500);
-        WmState settled = WmState.read(this);
-        Rec now = settled.resumed;
-        if (now != null && now.component.equals(READER) && !before.records.containsKey(now.id)) {
-            opened = new Opened(now.id, now.task, name);
+        // Judge the settled state. A reader may first appear in Telegram's task and move itself
+        // out; only the state a user is left with counts.
+        long firstSeen = System.currentTimeMillis();
+        long settleDeadline = firstSeen + SETTLE_TIMEOUT_MS;
+        while (System.currentTimeMillis() < settleDeadline) {
+            Thread.sleep(500);
+            WmState next = WmState.read(this);
+            if (next.resumed == null || !next.resumed.component.equals(READER)
+                || before.records.containsKey(next.resumed.id)) continue;
+            state = next;
+            if (state.resumed.task != telegramTask && state.inTask(telegramTask, PAGENO + "/").isEmpty()
+                && System.currentTimeMillis() - firstSeen >= 2000) break;
         }
-        opened.state = settled;
-        note("reader " + opened.id + " task=" + opened.task + " telegramTask=" + telegramTask);
+        Opened opened = new Opened(state.resumed.id, state.resumed.task, name);
+        opened.state = state;
+        note("reader " + opened.id + " task=" + opened.task + " telegramTask=" + telegramTask
+            + " settled after " + (System.currentTimeMillis() - firstSeen) + " ms");
         evidence("opened-" + name);
         return opened;
     }
@@ -402,6 +411,14 @@ public final class TelegramPdfE2E extends Instrumentation {
         note("moved task #" + task + " to front");
     }
 
+    /** Removes Telegram's tasks, including foreign activities left in them (e.g. a chooser). */
+    private void removeTelegramTasks() {
+        if (target == null) return;
+        for (ActivityManager.AppTask task : target.getSystemService(ActivityManager.class).getAppTasks()) {
+            try { task.finishAndRemoveTask(); } catch (Throwable ignored) { }
+        }
+    }
+
     private ComponentName launcherComponent() {
         Intent launch = target.getPackageManager().getLaunchIntentForPackage(telegramPackage);
         require(launch != null && launch.getComponent() != null, "Telegram has no launcher activity");
@@ -478,6 +495,16 @@ public final class TelegramPdfE2E extends Instrumentation {
                 }
             }
         }
+        return false;
+    }
+
+    private boolean clickTextWithin(String text, long timeoutMs) throws Exception {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        do {
+            // The chooser rebuilds its list while it loads, so nodes can go stale between tries.
+            if (clickText(text)) return true;
+            Thread.sleep(300);
+        } while (System.currentTimeMillis() < deadline);
         return false;
     }
 

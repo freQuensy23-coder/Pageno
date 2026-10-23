@@ -88,10 +88,14 @@ try:
         time.sleep(3)
         dump = adb("shell", "dumpsys", "activity", "activities")
         (OUT / f"activities-{index}.txt").write_text(dump)
-        # Caller task must contain no reader activity; check each task block.
-        for block in re.split(r"(?m)^  \* Task", dump):
-            if "Hist #" in block and caller + "/.CallerActivity" in block:
-                assert READER not in block, "Reader still belongs to the caller task"
+        # The caller task must contain no live reader. Every ActivityRecord names its task (tNN)
+        # and " f}" marks a finishing record. (Android 16 prints "Hist  #", so the old
+        # "Hist #" substring check never ran.)
+        records = re.findall(r"ActivityRecord\{\S+ u\d+ (\S+) t(-?\d+)( f)?\}", dump)
+        caller_tasks = {task for component, task, _ in records if component == caller_component}
+        assert caller_tasks, "Caller activity is missing from dumpsys"
+        leaked = {(c, t) for c, t, finishing in records if c == READER and t in caller_tasks and not finishing}
+        assert not leaked, f"Reader still belongs to the caller task: {leaked}"
         with (OUT / f"reader-{index}.png").open("wb") as image:
             subprocess.run(["adb", "exec-out", "screencap", "-p"], stdout=image, check=True)
         print(f"PASS: {mode}, separate tasks={tasks}, content URI opened")

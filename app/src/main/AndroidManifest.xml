@@ -82,12 +82,15 @@
             android:name=".ui.text_mode.TextModeActivity"
             android:exported="false"
             android:theme="@style/TextModeTheme" />
+        <!-- Each document gets its own task in Recents. Telegram and other apps open files with
+             startActivityForResult, where documentLaunchMode alone keeps the reader inside the
+             caller's task. singleInstancePerTask (API 31+) makes the system start a new task even
+             then and cancel the unused result. MainActivity handles API 23-30. -->
         <activity
             android:name=".ui.reader.MainActivity"
             android:configChanges="keyboardHidden|orientation|screenSize"
             android:documentLaunchMode="always"
-            android:launchMode="standard"
-            android:excludeFromRecents="false"
+            android:launchMode="singleInstancePerTask"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
