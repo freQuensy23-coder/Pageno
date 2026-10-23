@@ -1,16 +1,12 @@
 name: Telegram E2E
 # Opens a PDF from the official Telegram app on an Android 16 emulator and checks that Pageno
 # shows it in its own task. The same test also runs against a known-bad build and must catch it.
+# Called by android.yml; a release is published only if this passes.
 on:
-  push:
-    branches: [main, 'fix/**']
-  pull_request:
+  workflow_call:
   workflow_dispatch:
 permissions:
   contents: read
-concurrency:
-  group: telegram-e2e-${{ github.ref }}
-  cancel-in-progress: true
 env:
   NDK_VERSION: '30.0.14904198'
 jobs:
@@ -65,14 +61,21 @@ jobs:
         run: |
           mkdir -p PdfiumAndroid/src/main/jni/lib/{arm64-v8a,armeabi-v7a,x86,x86_64}
           python3 build_dependencies.py --pdfium prebuilt
-      - name: Build debug APK
-        run: bash ./gradlew --no-daemon --stacktrace --max-workers=2 -Dorg.gradle.jvmargs=-Xmx4g :app:assembleDebug
-      - name: Record build source
-        run: git log -1 --format='%H %s' > app/build/outputs/apk/debug/SOURCE.txt
+      # The E2E runs the minified release build, the one that is shipped.
+      - name: Build release APK
+        run: bash ./gradlew --no-daemon --stacktrace --max-workers=2 -Dorg.gradle.jvmargs=-Xmx4g :app:assembleRelease
+      - name: Sign the universal APK with a throwaway test key
+        run: |
+          mkdir -p e2e-apk
+          keytool -genkeypair -keystore e2e.jks -storepass android -keypass android -alias e2e \
+            -dname "CN=Pageno E2E" -keyalg RSA -validity 2
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" sign --ks e2e.jks --ks-pass pass:android \
+            --out e2e-apk/Pageno-universal-release.apk app/build/outputs/apk/release/*universal*-unsigned.apk
+          git log -1 --format='%H %s' > e2e-apk/SOURCE.txt
       - uses: actions/upload-artifact@v4
         with:
           name: pageno-${{ matrix.label }}
-          path: app/build/outputs/apk/debug/
+          path: e2e-apk/
           if-no-files-found: error
           retention-days: 14
 

@@ -1,6 +1,6 @@
 # Builds and releases
 
-The Android workflow runs on pushes to main, pull requests, v* tags and manual dispatch.
+The Android workflow runs on pushes to main, pull requests, v* tags and manual dispatch. It calls the Telegram E2E workflow.
 
 ## Continuous integration
 
@@ -14,9 +14,9 @@ Download the Pageno-debug artifact from a successful Actions run for an installa
 
 ## Release delivery
 
-Push a version tag such as v0.1.0 to build the tagged source and create a draft GitHub Release containing unsigned APKs and SHA-256 checksums. Publishing is left to the maintainer. Release creation runs only after all build checks pass.
+Every push to main publishes a GitHub Release `v<versionName>-build.<run>`, marked latest, once build, unit tests, lint, task-smoke and the Telegram E2E all pass. Pushing a `v*` tag publishes a release under that tag. Assets are APKs (universal and per ABI) signed with the Pageno release key, plus SHA-256 checksums. Latest: https://github.com/freQuensy23-coder/Pageno/releases/latest
 
-A release keystore has not been configured. Release APKs must be signed before installation/distribution; do not commit a keystore or passwords. The workflow does not publish to Google Play.
+The release key lives only in the repository secrets `PAGENO_KEYSTORE_B64` and `PAGENO_KEYSTORE_PASSWORD` (alias `pageno`, certificate SHA-256 `C5:93:DF:4C:3F:0E:56:D5:2A:9A:8A:AD:05:74:80:F8:48:BB:F4:2E:2C:17:D5:72:E7:9C:E6:35:CA:8A:47:8B`). Never commit it. Builds signed with any other key (CI debug builds, earlier artifacts) cannot be updated in place; uninstall them once first. The workflow does not publish to Google Play.
 
 ## Local build
 

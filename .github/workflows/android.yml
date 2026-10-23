@@ -2,7 +2,6 @@ name: Android
 on:
   push:
     branches: [main]
-    paths-ignore: ['ci/e2e/**', '.github/workflows/telegram-e2e.yml']
     tags: ['v*']
   pull_request:
   workflow_dispatch:
@@ -128,29 +127,58 @@ jobs:
           name: task-smoke-results
           path: task-smoke-results/
           if-no-files-found: warn
+  telegram-e2e:
+    uses: ./.github/workflows/telegram-e2e.yml
+
+  # Every push to main (and every v* tag) publishes a signed release after all tests pass.
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build, task-smoke]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    needs: [build, task-smoke, telegram-e2e]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
           name: Pageno-release-unsigned
-          path: release
-      - name: Prepare checksums and release notes
+          path: unsigned
+      - name: Sign APKs with the Pageno release key
+        env:
+          KEYSTORE_B64: ${{ secrets.PAGENO_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.PAGENO_KEYSTORE_PASSWORD }}
         run: |
-          cd release
-          sha256sum ./*.apk > SHA256SUMS
-          cat > ../release-notes.md <<'EOF'
-          Pageno fork of MJ PDF. These release APKs are UNSIGNED and must be signed with the project's release keystore before installation/distribution.
-          Source code and license are available in the repository at this tag. CI uses the upstream pinned prebuilt PDFium and rebuilds the JNI bridge, FreeType and libpng.
-          EOF
-      - name: Create draft GitHub Release
+          test -n "$KEYSTORE_B64" || { echo "PAGENO_KEYSTORE_B64 secret is missing"; exit 1; }
+          version=$(sed -n 's/.*versionName "\(.*\)"/\1/p' app/build.gradle)
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          apksigner=$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          mkdir release
+          for apk in unsigned/*.apk; do
+            abi=$(basename "$apk" | sed -E 's/^app-(.*)-release-unsigned\.apk$/\1/')
+            "$apksigner" sign --ks "$RUNNER_TEMP/release.jks" --ks-pass env:KEYSTORE_PASSWORD \
+              --ks-key-alias pageno --out "release/Pageno-$version-$abi.apk" "$apk"
+            "$apksigner" verify "release/Pageno-$version-$abi.apk"
+          done
+          rm "$RUNNER_TEMP/release.jks"
+          cd release && sha256sum ./*.apk > SHA256SUMS
+      - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          gh release create "$RELEASE_TAG" release/*.apk release/SHA256SUMS --verify-tag --draft --title "Pageno $RELEASE_TAG" --notes-file release-notes.md
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            tag="$GITHUB_REF_NAME"; target=()
+          else
+            tag="v$VERSION-build.$GITHUB_RUN_NUMBER"; target=(--target "$GITHUB_SHA")
+          fi
+          cat > release-notes.md <<EOF
+          Pageno $VERSION, built from ${GITHUB_SHA::7}. Signed with the Pageno release key.
+          Install **Pageno-$VERSION-universal.apk** (or the arm64-v8a one for modern phones).
+          Passed: unit tests, lint, task-smoke, and the Telegram end-to-end test (PDFs open in their own task).
+          Pageno is a fork of MJ PDF; source and license are in the repository.
+          EOF
+          gh release create "$tag" release/*.apk release/SHA256SUMS "${target[@]}" --latest \
+            --title "Pageno $VERSION (build $GITHUB_RUN_NUMBER)" --notes-file release-notes.md
