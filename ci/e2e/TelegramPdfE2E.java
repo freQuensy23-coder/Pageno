@@ -296,7 +296,10 @@ public final class TelegramPdfE2E extends Instrumentation {
                 }
                 if (!chooserHandled) {
                     evidence("chooser");
-                    require(clickTextWithin("Pageno", 10_000), "Cannot select Pageno in the app chooser");
+                    // The chooser lists apps, or offers the last used one as "Open with Pageno".
+                    if (!hasText("Open with Pageno")) {
+                        require(clickTextWithin("Pageno", 10_000), "Cannot select Pageno in the app chooser");
+                    }
                     require(clickTextWithin(chooserButton, 10_000), "Cannot press \"" + chooserButton + "\" in the app chooser");
                     chooserHandled = true;
                 }
@@ -493,6 +496,15 @@ public final class TelegramPdfE2E extends Instrumentation {
                         return true;
                     }
                 }
+            }
+        }
+        return false;
+    }
+
+    private boolean hasText(String text) {
+        for (AccessibilityNodeInfo root : roots()) {
+            for (AccessibilityNodeInfo node : root.findAccessibilityNodeInfosByText(text)) {
+                if (node.getText() != null && node.getText().toString().equalsIgnoreCase(text)) return true;
             }
         }
         return false;
