@@ -19,7 +19,8 @@ PROBE = "io.github.frequensy23.pageno.e2e/.TelegramPdfE2E"
 # The instrumentation sets up the PDF viewers each scenario needs.
 SCENARIOS = ["chooser_just_once", "open_once", "open_twice"]
 BUG_MARKERS = (
-    "READER_IN_TELEGRAM_TASK", "PAGENO_ACTIVITY_IN_TELEGRAM_TASK", "READER_NOT_TASK_ROOT",
+    "READER_STARTED_IN_TELEGRAM_TASK", "READER_IN_TELEGRAM_TASK", "PAGENO_ACTIVITY_IN_TELEGRAM_TASK",
+    "READER_NOT_TASK_ROOT",
     "TELEGRAM_NOT_SHOWN_FROM", "PDF_CLOSED_BY_RETURN_TO_TELEGRAM",
 )
 

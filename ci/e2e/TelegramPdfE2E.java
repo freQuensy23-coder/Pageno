@@ -64,6 +64,8 @@ public final class TelegramPdfE2E extends Instrumentation {
     private static final Pattern RESUMED = Pattern.compile(
         "(?m)^\\s*(?:m?ResumedActivity: |topResumedActivity=)ActivityRecord\\{(\\S+) u\\d+ (\\S+) t(-?\\d+)");
     private static final Pattern RECENT_TASK = Pattern.compile("\\* Recent #\\d+: Task\\{\\S+ #(\\d+)");
+    private static final Pattern CREATED = Pattern.compile(
+        "(?m)^\\s*(\\d+\\.\\d+)\\s.*wm_create_activity: \\[\\d+,(\\d+),(-?\\d+),([^,\\]]+)");
     private static final Pattern REAL_ACTIVITY = Pattern.compile("mActivityComponent=(\\S+)");
 
     private Bundle args;
@@ -270,6 +272,7 @@ public final class TelegramPdfE2E extends Instrumentation {
         }
         require(opener != null, "Telegram's AndroidUtilities.openForView(File, ...) was not found");
         final Method method = opener;
+        final double since = System.currentTimeMillis() / 1000.0 - 0.5;
         final Activity from = telegramResumed.get() != null ? telegramResumed.get() : telegram;
         AtomicReference<Throwable> failure = new AtomicReference<>();
         AtomicReference<Object> returned = new AtomicReference<>();
@@ -327,6 +330,7 @@ public final class TelegramPdfE2E extends Instrumentation {
         }
         Opened opened = new Opened(state.resumed.id, state.resumed.task, name);
         opened.state = state;
+        opened.created = readersCreatedSince(since);
         note("reader " + opened.id + " task=" + opened.task + " telegramTask=" + telegramTask
             + " settled after " + (System.currentTimeMillis() - firstSeen) + " ms");
         evidence("opened-" + name);
@@ -412,6 +416,19 @@ public final class TelegramPdfE2E extends Instrumentation {
             ui.dropShellPermissionIdentity();
         }
         note("moved task #" + task + " to front");
+    }
+
+    /** Reader activities the window manager created since the given time, with their tasks. */
+    private List<Rec> readersCreatedSince(double since) throws Exception {
+        List<Rec> created = new ArrayList<>();
+        String log = shell("logcat -b events -d -v epoch -s wm_create_activity");
+        Matcher m = CREATED.matcher(log);
+        while (m.find()) {
+            if (Double.parseDouble(m.group(1)) < since || !m.group(4).equals(READER)) continue;
+            created.add(new Rec(m.group(2), m.group(4), Integer.parseInt(m.group(3)), false));
+        }
+        note("readers created: " + created);
+        return created;
     }
 
     /** Removes Telegram's tasks, including foreign activities left in them (e.g. a chooser). */
@@ -617,6 +634,7 @@ public final class TelegramPdfE2E extends Instrumentation {
         final int task;
         final String title;
         WmState state;
+        List<Rec> created = new ArrayList<>();
         Opened(String id, int task, String title) { this.id = id; this.task = task; this.title = title; }
     }
 
